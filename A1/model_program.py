@@ -2,15 +2,17 @@ from utils import *
 import threading
 import random
 import simpy
+import time
 
-peer1_timestamp = {}
-peer2_timestamp = {}
-amt_timestamp = {}
+
 connected = {}
-threads = []
-txn_id = 0
+txn_id = None
 transactions = []
+c = []
 num_peers = 10
+changed = False
+peer2peer = None
+env = None
 
 #Took this class from https://www.geeksforgeeks.org/priority-queue-in-python/ with a change in delete function because of unfamiliarity with python data structures
 class PriorityQueue(object):
@@ -25,21 +27,20 @@ class PriorityQueue(object):
   
     def insert(self, data):
         self.queue.append(data)
+        #print(len(self.queue))
+
   
     def delete(self):
         try:
-            min = 0
+            max = 0
             for i in range(len(self.queue)):
-                if self.queue[i] > self.queue[min]:
-                    min = i
-            item = self.queue[min]
-            del self.queue[min]
-            del peer1_timestamp[item]
-            del peer2_timestamp[item]
-            del amt_timestamp[item]
+                if self.queue[i] > self.queue[max]:
+                    max = i
+            item = self.queue[max]
+            del self.queue[max]
             return item
         except IndexError:
-            print()
+            #print()
             exit()
 
 class transaction:
@@ -55,7 +56,11 @@ class peer:
     def __init__(self,id):
         self.id = id
         self.balance = 50
-        self.txn = []
+        self.transactions = []
+
+    def update_transactions(self):
+        l = [i for i in self.transactions if i.included == False]
+        self.transactions = l
 
 class event:
     def __init__(self,type,time,txn,peerid):
@@ -81,105 +86,90 @@ def latency(i,j,ro_ij,size,c):
 
 
 class p2p(object):
-    def __init__(self,env,tx,peers,connected,ro_ij,c):
+    def __init__(self,env,tx,txn_id,peers,connected,ro_ij,c):
         self.env = env
-        self.event_queue = PriorityQueue()
         self.tx = tx
+        self.txn_id = txn_id
+        self.event_queue = PriorityQueue()
         self.peers = peers
         self.connected = connected
         self.ro_ij = ro_ij
         self.c = c
         #self.peers = simpy.Resource(env,num_peers)
 
-        def generate_transaction(env,peer,p2p):
-            timeout = generate_exponential(self.tx)
-            y = select_random(self.peers)
-            while y != peer:
-                y = select_random(self.peers)
-            txn = transaction(env,y,5,txn_id)
-            txn_id += 1
-            e = event("forward",env.now + timeout,txn,peer.id)
-            event_queue.insert(e)
-            #yield self.env.timeout(timeout)
-
-        def forward_transaction(peer,env,txn):
-            for p in connected[peer]:
-                if txn.forwarded[peer-1][p-1] == False:
-                    txn.forwarded[peer-1][p-1] = True
-                    txn.forwarded[p-1][peer-1] = True
-                    timeout = latency(peer-1,p-1,self.ro_ij,1,self.c)
-                    e = event("recieve",env.now + time,p)
-                    
-
-        def recieve_transaction(env,peer,txn):
-            for p in connected[peer]:
-                if txn.forwarded[peer-1][p-1] == False:
-                    txn.forwarded[peer-1][p-1] = True
-                    txn.forwarded[p-1][peer-1] = True
-                    timeout = latency(peer-1,p-1,self.ro_ij,1,self.c)
-                    e = event("recieve",env.now + time,p)            
-
-
-
-def peer_function(env,peer,p2p):
-    while true:
-        yield env.process(p2p.generate_transaction(env.peer,p2p))
-
-
+    def generate_transaction(self,env,peer,p2p,dummy):
         
+        #print("Hi")
+        timeout = generate_exponential(self.tx)
+        t = env.now
+        #print("time " + str(t) + "  " + str(timeout))
+        y = select_random(self.peers)
+        while y == peer:
+            y = select_random(self.peers)
+        txn = transaction(env,y,5,self.txn_id)
+        
+        if dummy==False:
+            self.txn_id += 1
+            peer.transactions.append(txn)
+            self.tx.append(txn)
+            e = event("forward",t,txn,peer.id)
+            self.event_queue.insert(e)
+        e = event("generate",t+timeout,txn,peer.id)
+        self.event_queue.insert(e)
+        
+        #print(self.event_queue.__str__())
+        yield self.env.timeout(0)
+        #yield peer.id
+
+    def forward_transaction(self,peer,env,txn):
+        for p in connected[peer]:
+            if txn.forwarded[peer-1][p-1] == False:
+                txn.forwarded[peer-1][p-1] = True
+                txn.forwarded[p-1][peer-1] = True
+                timeout = latency(peer-1,p-1,self.ro_ij,1,self.c)
+                e = event("recieve",env.now + timeout,txn,p.id)
+                self.event_queue.insert(e)
+
+    def recieve_transaction(self,env,peer,txn):
+        peer.transactions.append(txn)
+        for p in connected[peer]:
+            if txn.forwarded[peer-1][p-1] == False:
+                txn.forwarded[peer-1][p-1] = True
+                txn.forwarded[p-1][peer-1] = True
+                timeout = latency(peer-1,p-1,self.ro_ij,1,self.c)
+                e = event("recieve",env.now + timeout,txn,p.id)
+                self.event_queue.insert(e)  
+
+
+    def simulate(self,env):
+        while True:
+            e = self.event_queue.delete()
+            print(e.type + " " + str(e.time) + " " + str(e.peerid) + " " + str(e.txn.dest.id))
 
 
 
-def initialize_peers(n,b):
-    balance = []
-    id = []
-    for i in range(n):
-        balance.append(b)
-        id.append(i+1)
-    return (balance,id)
 
-# def generate_transaction(x,y,tx):
-#     t = generate_exponential(tx)
-#     peer1_timestamp[t] = x
-#     peer2_timestamp[t] = y
-#     amt_timestamp[t] = 5
-#     event_queue.insert(t)
-#     transactions.append(transaction(x,y,5))
-#     print(str(x) + " pays " + str(i) + ' 5' + " coins at t: " + str(t))
+def peer_function(env):
+    peer2peer = p2p(env,0.01,0,peers,connected,ro_ij,c)
+    for peer in peer2peer.peers:
+        yield env.process(peer2peer.generate_transaction(env,peer,peer2peer,True))
+    changed = True
+    #env.timeout(50)
+    #time.sleep(10)
+    env.process(peer2peer.simulate(env))
+    yield env.timeout(0)
 
-
-
-# def init_forwarding(n):
-#     for i in range(n):
-#         for j in range(n):
-#             forwarded[i][j] = False    
-
-# def forward(id,f,connected):
-#     for i in connected[id]:
-#         if forwarded[id-1][i-1] == False:
-#             print(str(id) + "   " + str(i))
-#             forwarded[id-1][i-1] = True
-#             forwarded[i-1][id-1] = True
-#     for i in peers:
-#         for j in connected[i]:
-#             if forwarded[i-1][j-1] == False:
-#                 print(str(i) + "   " + str(j))
-#                 forwarded[i-1][j-1] = True
-#                 forwarded[j-1][i-1] = True
-
-
-
-
+    
 
 if __name__ == '__main__':
-    n = 5
     z = 0.3
+    txn_id = 0
     ro_ij = generate_uniform(10,500)
-    peers = [(i+1) for i in range(n)]
-    slow = random.sample(peers,int(n*z))
-    print(slow)
+    peers = [peer(i+1) for i in range(num_peers)]
+    slow = random.sample(peers,int(num_peers*z))
+    #print(slow)
     fast = [i for i in peers if i not in slow]
-    print(fast)
+    #print(fast)
     c = []
     for i in peers:
         temp = []
@@ -194,14 +184,17 @@ if __name__ == '__main__':
         c.append(temp)
     
     
-    for i in range(n):
-        temp = [False for i in range(n)]
-        forwarded.append(temp)    
-    
-    for i in range(n):
-        l = [(i+k) % n for k in [2,3]]
+    for i in range(num_peers):
+        l = [(i+k) % num_peers for k in [2,3]]
         connected[i+1] = l
-    print(connected[1])
+    env = simpy.Environment()
+    #print(env.now)
+    env.process(peer_function(env))
+    #print(env.now)
+    env.run(until=900000000)
+    
+
+
 
 
     # for i in range(n):

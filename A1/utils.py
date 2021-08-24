@@ -4,7 +4,7 @@ import random
 
 
 def generate_exponential(mean):
-    t = random.exponential(scale = mean)
+    t = np.random.exponential(scale = mean)
     return t
 
 def generate_uniform(lo,hi):
