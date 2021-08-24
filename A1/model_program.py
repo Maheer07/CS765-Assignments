@@ -10,7 +10,6 @@ txn_id = None
 transactions = []
 c = []
 num_peers = 10
-changed = False
 peer2peer = None
 env = None
 
@@ -52,6 +51,13 @@ class transaction:
         self.included = False
         self.forwarded = [[False for i in range(num_peers)] for i in range(num_peers)]
 
+# class block:
+#     def __init__(self):
+#         self.id 
+#         self.txnlist
+#         self.time
+#         self.creatorid
+
 class peer:
     def __init__(self,id):
         self.id = id
@@ -88,7 +94,7 @@ def latency(i,j,ro_ij,size,c):
 class p2p(object):
     def __init__(self,env,tx,txn_id,peers,connected,ro_ij,c):
         self.env = env
-        self.tx = tx
+        self.time_tx = tx
         self.txn_id = txn_id
         self.event_queue = PriorityQueue()
         self.peers = peers
@@ -100,7 +106,7 @@ class p2p(object):
     def generate_transaction(self,env,peer,p2p,dummy):
         
         #print("Hi")
-        timeout = generate_exponential(self.tx)
+        timeout = generate_exponential(self.time_tx)
         t = env.now
         #print("time " + str(t) + "  " + str(timeout))
         y = select_random(self.peers)
@@ -111,7 +117,6 @@ class p2p(object):
         if dummy==False:
             self.txn_id += 1
             peer.transactions.append(txn)
-            self.tx.append(txn)
             e = event("forward",t,txn,peer.id)
             self.event_queue.insert(e)
         e = event("generate",t+timeout,txn,peer.id)
@@ -145,6 +150,9 @@ class p2p(object):
         while True:
             e = self.event_queue.delete()
             print(e.type + " " + str(e.time) + " " + str(e.peerid) + " " + str(e.txn.dest.id))
+            env.timeout(e.time)
+            #if e.type == 'generate':
+
 
 
 
@@ -187,18 +195,15 @@ if __name__ == '__main__':
     for i in range(num_peers):
         l = [(i+k) % num_peers for k in [2,3]]
         connected[i+1] = l
+
+
+
     env = simpy.Environment()
     #print(env.now)
     env.process(peer_function(env))
     #print(env.now)
-    env.run(until=900000000)
+    env.run(until=900)
     
 
 
-
-
-    # for i in range(n):
-    #     t = threading.Thread(target=start_transactions, args = (i,tx,peers,))
-    #     t.start()
-    #     threads.append(t)
 
