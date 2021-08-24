@@ -9,7 +9,7 @@ connected = {}
 txn_id = None
 transactions = []
 c = []
-num_peers = 10
+num_peers = 5
 peer2peer = None
 env = None
 
@@ -106,6 +106,7 @@ class p2p(object):
     def generate_transaction(self,env,peer,p2p,dummy):
         
         #print("Hi")
+        
         timeout = generate_exponential(self.time_tx)
         t = env.now
         #print("time " + str(t) + "  " + str(timeout))
@@ -113,8 +114,10 @@ class p2p(object):
         while y == peer:
             y = select_random(self.peers)
         txn = transaction(env,y,5,self.txn_id)
-        
+        #print(str(dummy))
         if dummy==False:
+            #print("Yo")
+            print("Generating transaction " + str(self.txn_id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
             self.txn_id += 1
             peer.transactions.append(txn)
             e = event("forward",t,txn,peer.id)
@@ -122,48 +125,57 @@ class p2p(object):
         e = event("generate",t+timeout,txn,peer.id)
         self.event_queue.insert(e)
         
-        #print(self.event_queue.__str__())
+        
         yield self.env.timeout(0)
-        #yield peer.id
+
 
     def forward_transaction(self,peer,env,txn):
-        for p in connected[peer]:
-            if txn.forwarded[peer-1][p-1] == False:
-                txn.forwarded[peer-1][p-1] = True
-                txn.forwarded[p-1][peer-1] = True
-                timeout = latency(peer-1,p-1,self.ro_ij,1,self.c)
-                e = event("recieve",env.now + timeout,txn,p.id)
+        for p in connected[peer.id]:
+            if txn.forwarded[peer.id-1][p-1] == False:
+                txn.forwarded[peer.id-1][p-1] = True
+                txn.forwarded[p-1][peer.id-1] = True
+                timeout = latency(peer.id-1,p-1,self.ro_ij,1,self.c)
+                print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                e = event("recieve",env.now + timeout,txn,p)
                 self.event_queue.insert(e)
+        
+        yield self.env.timeout(0)
 
     def recieve_transaction(self,env,peer,txn):
+        print("Recieved transaction " + str(txn.id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
         peer.transactions.append(txn)
-        for p in connected[peer]:
-            if txn.forwarded[peer-1][p-1] == False:
-                txn.forwarded[peer-1][p-1] = True
-                txn.forwarded[p-1][peer-1] = True
-                timeout = latency(peer-1,p-1,self.ro_ij,1,self.c)
-                e = event("recieve",env.now + timeout,txn,p.id)
+        for p in connected[peer.id]:
+            if txn.forwarded[peer.id-1][p-1] == False:
+                txn.forwarded[peer.id-1][p-1] = True
+                txn.forwarded[p-1][peer.id-1] = True
+                timeout = latency(peer.id-1,p-1,self.ro_ij,1,self.c)
+                print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                e = event("recieve",env.now + timeout,txn,p)
                 self.event_queue.insert(e)  
+        yield self.env.timeout(0)
 
 
     def simulate(self,env):
         while True:
             e = self.event_queue.delete()
-            print(e.type + " " + str(e.time) + " " + str(e.peerid) + " " + str(e.txn.dest.id))
-            env.timeout(e.time)
-            #if e.type == 'generate':
+            yield env.timeout(e.time - env.now)
+            if e.type == "generate":
+                env.process(self.generate_transaction(env,self.peers[e.peerid-1],p2p,False))
 
+            elif e.type == "forward":
+                env.process(self.forward_transaction(self.peers[e.peerid-1],env,e.txn))
 
+            elif e.type == "recieve":
+                env.process(self.recieve_transaction(env,self.peers[e.peerid-1],e.txn))
+            yield env.timeout(0)
 
 
 
 def peer_function(env):
-    peer2peer = p2p(env,0.01,0,peers,connected,ro_ij,c)
+    peer2peer = p2p(env,100,0,peers,connected,ro_ij,c)
     for peer in peer2peer.peers:
         yield env.process(peer2peer.generate_transaction(env,peer,peer2peer,True))
     changed = True
-    #env.timeout(50)
-    #time.sleep(10)
     env.process(peer2peer.simulate(env))
     yield env.timeout(0)
 
@@ -202,7 +214,7 @@ if __name__ == '__main__':
     #print(env.now)
     env.process(peer_function(env))
     #print(env.now)
-    env.run(until=900)
+    env.run(until=9000)
     
 
 
