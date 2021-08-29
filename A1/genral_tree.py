@@ -89,7 +89,23 @@ class GenralTree:
         else:
             [self.findLongest(elem,height+1) for elem in Node.getChildren()]
 
-    #def longestPath(self, Node,height,list):
+    def longestPath(self, node):
+        if (len(node.getChildren()) == 0):
+            return [node.getData()]
+        max_len = -1
+        ind = -1
+        i = 0
+        temp = [self.longestPath(elem) for elem in node.getChildren()]
+        for x in temp:
+            if len(x) > max_len:
+                max_len = len(x)
+                x.append(node.getData())
+                ind = i
+            i += 1
+        return temp[ind]
+
+    def lastElem(self):
+        return self.longestPath(self.root)[0]            
 
 
 
@@ -138,7 +154,7 @@ def main():
     child11111=tree.addChildTree(child1111,11)
     tree.findLongest(curr,0)
     print(tree.getLongest())
-    
+    print(tree.lastElem())
 
 if __name__ == '__main__':
     main()
