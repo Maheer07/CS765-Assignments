@@ -1,4 +1,5 @@
 from utils import *
+from genral_tree import *
 import threading
 import random
 import simpy
@@ -53,23 +54,31 @@ class transaction:
         self.forwarded = [[False for i in range(num_peers)] for i in range(num_peers)]
 
 class block:
-    def __init__(self,id,txnlist,time,creatorid,dummy):
+    def __init__(self,id,txnlist,time,creatorid,previd,dummy):
         self.id = id
         self.txnlist = txnlist
         self.time = time
         self.creatorid = creatorid
+        self.previd = previd
         self.dummy = dummy
         self.forwarded = [[False for i in range(num_peers)] for i in range(num_peers)]
 
     def size(self):
         return 1 + len(self.txnlist)
 
+    def mod_txns(self):
+        for t in self.txnlist:
+            t.included = True
+
 class peer:
     def __init__(self,id,balances):
         self.id = id
         self.balances = balances
         self.transactions = []
-        self.blocktree = tree()
+        self.blocktree = GenralTree()
+        self.blocktree.setRoot(block(0,[],0,self.id,0,False))
+        self.root = self.blocktree.getRoot()
+        self.pending = {}
 
     def update_transactions(self):
         l = [i for i in self.transactions if i.included == False]
@@ -118,9 +127,9 @@ class p2p(object):
         y = select_random(self.peers)
         while y == peer:
             y = select_random(self.peers)
-        txn = transaction(env,y,5,self.txn_id)
+        txn = transaction(peer,y,5,self.txn_id)
         if dummy==False:
-            print("Generating transaction " + str(self.txn_id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
+            #print("Generating transaction " + str(self.txn_id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
             self.txn_id += 1
             peer.transactions.append(txn)
             e = event("forward transaction",t,txn,peer.id)
@@ -137,44 +146,45 @@ class p2p(object):
                 txn.forwarded[peer.id-1][p-1] = True
                 txn.forwarded[p-1][peer.id-1] = True
                 timeout = latency(peer.id-1,p-1,self.ro_ij,1,self.c)
-                print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                #print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
                 e = event("recieve transaction",env.now + timeout,txn,p)
                 self.event_queue.insert(e)
         
         yield self.env.timeout(0)
 
     def recieve_transaction(self,env,peer,txn):
-        print("Recieved transaction " + str(txn.id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
+        #print("Recieved transaction " + str(txn.id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
         peer.transactions.append(txn)
         for p in connected[peer.id]:
             if txn.forwarded[peer.id-1][p-1] == False:
                 txn.forwarded[peer.id-1][p-1] = True
                 txn.forwarded[p-1][peer.id-1] = True
                 timeout = latency(peer.id-1,p-1,self.ro_ij,1,self.c)
-                print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                #print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
                 e = event("recieve transaction",env.now + timeout,txn,p)
                 self.event_queue.insert(e)  
 
         yield self.env.timeout(0)
 
-
-
     def generate_block(self,env,peer):
 
         timeout = generate_exponential(self.time_tk)
         t = env.now
-        n = len(self.peers[peer-1].txnlist)
+        n = len(peer.transactions)
         lim  = 999
         l = [i for i in range(n)]
-        num = random.sample(l,1)[0]
+        if n == 0:
+            num = 0
+        else:
+            num = random.sample(l,1)[0]
         while num > lim:
             num = random.sample(l,1)[0]
-        txns = random.sample(self.peers[peer-1].txnlist,num) 
-        longest_chain_id = self.peers[peer-1].tree.findlongest()         
-        b = block(self.blockid,txns,longest_chain_id,t,peer)
+        txns = random.sample(peer.transactions,num) 
+        longest_chain_id = peer.blocktree.lastElem().id        
+        b = block(self.blockid,txns,t,peer.id,longest_chain_id,False)
     
-        print("Generating block " + str(self.txn_id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
-        e = event("forward block", t + timeout,b,peer.id,longest_chain_id)
+        print("Generating block " + str(self.blockid) + " at peer " + str(peer.id) + " at t= " + str(env.now))
+        e = event("forward block", t + timeout,b,peer.id)
         self.event_queue.insert(e)
         
         yield self.env.timeout(0)
@@ -182,27 +192,31 @@ class p2p(object):
     
     def forward_block(self,env,peer,block):
 
-        l = self.peers[peer-1].tree.findlongest()
+        l = peer.blocktree.lastElem().id
+        print("Longest chain last id = " + str(l))
         if l == block.previd:
-            self.blockid += 1
             valid = True
             for txn in block.txnlist:
                 s = txn.src
                 r = txn.dest
                 amt = txn.amt
-                if amt > self.peers[peer-1].balances[s-1]:
+                if amt > peer.balances[s.id-1]:
                     valid = False
                     break
             if valid:
+                print("Generated block " + str(block.id) + " at peer " + str(peer.id) + " time = " + str(env.now))
+                self.blockid += 1
+                block.mod_txns()
+                peer.update_transactions()
                 for txn in block.txnlist:
                     s = txn.src
                     r = txn.dest
                     amt = txn.amt
-                    self.peers[peer-1].balances[s-1] -= amt
-                    self.peers[peer-1].balances[r-1] += amt
-                self.peers[peer-1].balances[peer-1] += 50
-                self.peers[peer-1].update_transactions()            
-                #Add block to the tree
+                    peer.balances[s.id-1] -= amt
+                    peer.balances[r.id-1] += amt
+                peer.balances[peer.id-1] += 50
+                b,b1 = peer.blocktree.DFS(block.previd)
+                peer.blocktree.addChildTree(b,block)   
                 size = block.size()
                 for p in connected[peer.id]:
                     if block.forwarded[peer.id-1][p-1] == False:
@@ -225,42 +239,58 @@ class p2p(object):
     def recieve_block(self,env,peer,block):
         print("Recieved block " + str(block.id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
         if(block.dummy == True):
-            e = event("generate block",env.now,peer)
+            e = event("generate block",env.now,block,peer.id)
             self.event_queue.insert(e)
 
         else:
-            size = block.size()
-            valid = True
-            for txn in block.txnlist:
-                s = txn.src
-                r = txn.dest
-                amt = txn.amt
-                if amt > self.peers[peer-1].balances[s-1]:
-                    valid = False
-                    break
-            if valid:
+            block1,boolean = peer.blocktree.DFS(block.previd)
+            if boolean != False:
+                size = block.size()
+                valid = True
                 for txn in block.txnlist:
                     s = txn.src
                     r = txn.dest
                     amt = txn.amt
-                    self.peers[peer-1].balances[s-1] -= amt
-                    self.peers[peer-1].balances[r-1] += amt
-                self.peers[peer-1].balances[block.creatorid-1] += 50
-                #Add block to the tree
-                self.peers[peer-1].update_transactions()
-                e = event("generate block",env.now,peer)
-                self.event_queue.insert(e)
-                for p in connected[peer.id]:
-                    if block.forwarded[peer.id-1][p-1] == False:
-                        block.forwarded[peer.id-1][p-1] = True
-                        block.forwarded[p-1][peer.id-1] = True
-                        timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c)
-                        print("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
-                        e = event("recieve block",env.now + timeout,block,p)
-                        self.event_queue.insert(e)
+                    if amt > peer.balances[s.id-1]:
+                        valid = False
+                        break
+                if valid:
+                    peer.update_transactions()
+                    for txn in block.txnlist:
+                        s = txn.src
+                        r = txn.dest
+                        amt = txn.amt
+                        peer.balances[s.id-1] -= amt
+                        peer.balances[r.id-1] += amt
+                    peer.balances[block.creatorid-1] += 50
+                    peer.blocktree.addChildTree(block1,block)    
+                    prev = block.previd
+                    if prev in peer.pending:
+                        for b in peer.pending[prev]:
+                            e = event("recieve block",env.now,b,peer.id)
+                            self.event_queue.insert(e)              
 
+                    #Recieve all the pending blocks of this node                    
+                    e = event("generate block",env.now,block,peer.id)
+                    self.event_queue.insert(e)
+                    for p in connected[peer.id]:
+                        if block.forwarded[peer.id-1][p-1] == False:
+                            block.forwarded[peer.id-1][p-1] = True
+                            block.forwarded[p-1][peer.id-1] = True
+                            timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c)
+                            print("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                            e = event("recieve block",env.now + timeout,block,p)
+                            self.event_queue.insert(e)
+
+                else:
+                    print("Block " + str(block.id) + " is invalid at peer " + str(peer.id))
+            
             else:
-                print("Block " + str(block.id) + " is invalid at peer " + str(peer.id))
+                prev = block.previd
+                if prev in peer.pending:
+                    peer.pending.append(block)
+                else:
+                    peer.pending[prev] = [block]                
             
             
                                             
@@ -297,12 +327,12 @@ class p2p(object):
 
 
 def peer_function(env):
-    peer2peer = p2p(env,100,100,0,1,peers,connected,ro_ij,c)
+    peer2peer = p2p(env,100,10000,0,1,peers,connected,ro_ij,c)
     for peer in peer2peer.peers:
         yield env.process(peer2peer.generate_transaction(env,peer,True))
 
     for peer in peer2peer.peers:
-        b = block(0,[],0,0,True)
+        b = block(1,[],0,0,0,True)
         yield env.process(peer2peer.recieve_block(env,peer,b))
         env.process(peer2peer.simulate(env))
     yield env.timeout(0)

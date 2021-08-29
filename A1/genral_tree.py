@@ -72,14 +72,11 @@ class GenralTree:
 
         while len(stack)>0:
             curr = stack.pop()
-            print(curr.getData())
-            if curr.getData() == val:
-                print("Eureka! found it")
-                return curr
+            if curr.getData().id == val:
+                return (curr,True)
             else:
                 [stack.append(elem) for elem in curr.getChildren()]
-        print("OOPS! not found")
-        return -1
+        return (Node(0),False)
 
     def findLongest(self, Node,height):
         #print(len(Node.getChildren()))
