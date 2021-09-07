@@ -61,6 +61,7 @@ class transaction:
         self.dest = dest #Y, the reciever
         self.amt = amt #Z, the amount sent
         self.id = id # Unique transaction ID
+        self.invalid = False
         self.included = False #Is the transaction included in any block
         self.forwarded = [[False for i in range(num_peers)] for i in range(num_peers)] #The forwarding table of the txn. forwarded[i][j] = True means the txn has been forwarded from peer i to j or vice versa
 
@@ -93,7 +94,7 @@ class peer:
         self.arrived = [] #Blocks recieved by the peer
 
     def update_transactions(self):
-        l = [i for i in self.transactions if i.included == False]
+        l = [i for i in self.transactions if (i.included == False) and (i.invalid == False)]
         self.transactions = l
 
 class event:
@@ -113,7 +114,7 @@ class event:
 def latency(i,j,ro_ij,size,c): #Function to return latency in ms 
     c_ij = c[i][j] #c_ij as per definition
     d_ij = generate_exponential(96/c_ij) #d_ij as per definition
-    t = d_ij + ro_ij + (size / c_ij)
+    t = d_ij + ro_ij + (size*8 / c_ij) # t is our final answer. We have converted bytes to bits here
     return t
 
 def add_time(t1,t2): #Adds delay(from simulation) to the global time at the start of simulation
@@ -158,8 +159,9 @@ class p2p(object):
         while y == peer:
             y = select_random(self.peers)
         
-        high = peer.balances[y.id - 1]
-        amt = random.uniform(0,high) #We select amount of txn from a unifrom distribution with ranges 0 and balance of sender 
+        high = peer.balances[peer.id - 1]
+        #amt = random.uniform(0,high) #We select amount of txn from a unifrom distribution with ranges 0 and balance of sender 
+        amt = 100
         txn = transaction(peer,y,amt,self.txn_id) 
         if dummy==False: #Dummy = true is just for initialization
             with open(file_txn,"a") as ff:
@@ -235,14 +237,20 @@ class p2p(object):
         l = peer.blocktree.lastElem().id
         if l == block.previd: #Checking if the longest chain hasn't changed
             valid = True
+            prev_balances = peer.balances
             for txn in block.txnlist: #Checking block validity
                 s = txn.src
                 r = txn.dest
                 amt = txn.amt
-                if amt > peer.balances[s.id-1]:
+                if (peer.balances[s.id-1] - amt) < 0:
                     valid = False
+                    txn.invalid = True
                     break 
+                else:
+                    peer.balances[s.id-1] -= amt
+                    peer.balances[r.id-1] += amt 
             if valid: #If block is valid
+                peer.balances = prev_balances
                 with open(file_block,"a") as ff:
                     ff.write("Generated block " + str(block.id) + " at peer " + str(peer.id) + " time = " + str(env.now) + " with txns " + str([x.id for x in block.txnlist]) + "\n")
                 self.blockid += 1
@@ -299,6 +307,10 @@ class p2p(object):
                         self.event_queue.insert(e)
             
             else:
+                peer.balances = prev_balances
+                #If block is invalid, we need to mine on the last valid block
+                e = event("generate block", env.now,peer.blocktree.lastElem(),peer.id)
+                self.event_queue.insert(e)
                 with open(file_block,"a") as ff:
                     ff.write("Block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
 
@@ -315,22 +327,29 @@ class p2p(object):
                 e = event("generate block",env.now,block,peer.id)
                 self.event_queue.insert(e)
 
-            else:
+            else:            
                 with open(file_block,"a") as ff:
                     ff.write("Recieved block " + str(block.id) + " at peer " + str(peer.id) + " at t= " + str(env.now)  + "\n")
                 block1,boolean = peer.blocktree.DFS(block.previd) #Checking if the parent block exists in the blockchain tree
                 if boolean != False:
                     size = block.size()
                     valid = True
+                    prev_balances = peer.balances
                     for txn in block.txnlist: #Checking validity of the recieved block
                         if txn in peer.transactions:
                             s = txn.src
                             r = txn.dest
                             amt = txn.amt
-                            if amt > peer.balances[s.id-1]:
-                                valid = False
+                            if (peer.balances[s.id-1] - amt) < 0:
+                                valid = False                        
+                                txn.invalid = True
                                 break
+                            else:
+                                peer.balances[s.id-1] -= amt
+                                peer.balances[r.id-1] += amt                                 
+
                     if valid:
+                        peer.balances = prev_balances
                         peer.update_transactions() 
                         for txn in block.txnlist: #Update balance of peers
                             s = txn.src
@@ -382,13 +401,14 @@ class p2p(object):
                                 self.event_queue.insert(e)
 
                     else: #In case block was invalid
+                        peer.balances = prev_balances
                         with open(file_block,"a") as ff:
                             ff.write("Block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
                 
                 else: #In case block's parent hasn't arrived, we keep this block in the pending dictionary and process this block after the parent block arrives if its valid
                     prev = block.previd
                     if prev in peer.pending:
-                        peer.pending.append(block)
+                        peer.pending[prev].append(block)
                     else:
                         peer.pending[prev] = [block]  
             peer.arrived.append(block)              
@@ -402,6 +422,9 @@ class p2p(object):
 
     def simulate(self,env): #This function keeps on executing all the events in the queue in order of time of arrival of the events. It looks at the event type and then calls the corresponding function
         while True:
+            if self.event_queue.isEmpty():
+                print("Event queue is empty!")
+                break
             e = self.event_queue.delete()
             yield env.timeout(e.time - env.now) #Incrementing simulation time to the time of the event to be processed
             if e.type == "generate transaction":
@@ -421,6 +444,8 @@ class p2p(object):
             
             elif e.type == "recieve block":
                 env.process(self.recieve_block(env,self.peers[e.peerid-1],e.txnorblock))
+            
+
 
 
             yield env.timeout(0)
@@ -428,8 +453,8 @@ class p2p(object):
 
 
 def peer_function(env): #Main function that will run in the simulation
-    tk = [10000 for i in range(num_peers)]
-    peer2peer = p2p(env,10,tk,0,1,peers,connected,ro_ij,c) #Creating peer 2 peer network object
+    tk = [15000 for i in range(num_peers)]
+    peer2peer = p2p(env,100,tk,0,1,peers,connected,ro_ij,c) #Creating peer 2 peer network object
     for peer in peer2peer.peers: #Generating dummy transactions that will start transaction generation in all the peers
         yield env.process(peer2peer.generate_transaction(env,peer,True))
 
@@ -446,8 +471,8 @@ def peer_function(env): #Main function that will run in the simulation
 if __name__ == '__main__':
     z = 0.3 #Fraction of slow peers
     txn_id = 0 
-    ro_ij = generate_uniform(10,500)
-    b = [500 for i in range(num_peers)] #Balances of the peers
+    ro_ij = generate_uniform(10,500) #ro_ij in the latency defn in ms
+    b = [10000 for i in range(num_peers)] #Balances of the peers
     peers = [peer(i+1,b) for i in range(num_peers)]  #Generating the peer list
     slow = random.sample(peers,int(num_peers*z)) #List with slow peers
     fast = [i for i in peers if i not in slow] #List with fast peers
@@ -477,7 +502,7 @@ if __name__ == '__main__':
 
     env = simpy.Environment()  #Creating the environment of the simulation
     env.process(peer_function(env)) #Running peer function in the environment
-    env.run(until=9000)  #Run untill timeout
+    env.run(until=90000)  #Run until timeout
 
     for i in range(num_peers):
         longest_ids = [x.id for x in longest_chain[i+1]][1:] #List of longest ids in the longest chain
