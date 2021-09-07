@@ -3,29 +3,30 @@ import matplotlib.pyplot as plt
 
 # Ref:
 # https://gist.github.com/goldsamantha/36767f42c25ae6b97fbc
-class Node:
+class Node: #Component of a tree. This will be a block in our implementation
     def __init__(self,val,parent=None,children=None):
-        self.val=val
-        self.parent=parent
-        if children is None:
+        self.val=val    #Value (block for us)
+        self.parent=parent  #Parent node
+        if children is None:    #Node children
             self.children = []
         else:
             self.children = children
 
-    def getData(self):
+    #Setting and getting data
+    def getData(self):  
         return self.val
 
     def setData(self,val):
         self.val=val
         return
-    
+    #Setting and getting node children
     def getChildren(self):
         return self.children
 
     def addChild(self,node):
         self.children.append(node)
         return
-    
+    #Setting and getting node parents
     def getParent(self):
         return self.parent
 
@@ -33,12 +34,12 @@ class Node:
         self.parent=val
         return
 
-class GenralTree:
+class GenralTree:   #Basic tree
 
     def __init__(self):
-        self.root = None
-        self.longest=0
-        self.visual = []
+        self.root = None    #Root node
+        self.longest=0      #Length of longest path
+        self.visual = []    #Used for visualization using networkx
 
     def getLongest(self):
         return self.longest
@@ -50,9 +51,8 @@ class GenralTree:
         nd=Node(root)
         self.root=nd
 
-    #def isEmpty:
 
-    def addChildTree(self,parent,val):
+    def addChildTree(self,parent,val):  #Add child node with value val to the parent 
         nd = Node(val, parent)
         parent.addChild(nd)
         p = parent.getData().id
@@ -60,19 +60,7 @@ class GenralTree:
         self.visual.append([p, c])
         return nd
 
-    def printTree(self):#has bugs
-        stack=[]
-        curr=self.root
-        stack.append(curr)
-
-        while len(stack)>0:
-            print(curr.getData())
-            curr = stack[-1]
-            stack.pop()
-            [stack.append(elem) for elem in curr.getChildren()]
-        return
-
-    def DFS(self,val):
+    def DFS(self,val):  #Checks if a node exists in the tree and if yes, returns it
         stack=[]
         curr=self.root
         stack.append(curr)
@@ -85,7 +73,7 @@ class GenralTree:
                 [stack.append(elem) for elem in curr.getChildren()]
         return (Node(0),False)
 
-    def get_height(self,val):
+    def get_height(self,val):   #Height of a node with value val
         stack=[]
         h = 0
         curr=self.root
@@ -100,7 +88,7 @@ class GenralTree:
                 h += 1
         return -1       
 
-    def findLongest(self, Node,height):
+    def findLongest(self, Node,height): #Updates longest path length in the tree
         #print(len(Node.getChildren()))
         if len(Node.getChildren())==0:
             self.longest=max(height,self.longest)
@@ -108,7 +96,7 @@ class GenralTree:
         else:
             [self.findLongest(elem,height+1) for elem in Node.getChildren()]
 
-    def longestPath(self, node):
+    def longestPath(self, node):    #Returns longest path in the tree (used in longest chain)
         if (len(node.getChildren()) == 0):
             return [node.getData()]
         max_len = -1
@@ -123,10 +111,10 @@ class GenralTree:
             i += 1
         return temp[ind]
 
-    def lastElem(self):
+    def lastElem(self): #Last node in the longest path
         return self.longestPath(self.root)[0]  
 
-    def visualize(self):
+    def visualize(self):    #Displaying the tree(used at the end)
         G = nx.Graph()
         G.add_edges_from(self.visual)
         nx.draw_networkx(G)
@@ -135,58 +123,58 @@ class GenralTree:
 
 
 
-def main():
-    # tree = GenralTree()
-    # tree.SetRoot(2)
-    # curr=tree.getRoot()
-    # child1=tree.addChildTree(curr,3)
-    # child2=tree.addChildTree(curr,4)
-    # child3=tree.addChildTree(curr,5)
-    # child11=tree.addChildTree(child1,6)
-    # child12=tree.addChildTree(child1,7)
-    # child21=tree.addChildTree(child2,8)
-    # child211=tree.addChildTree(child21,9)
-    # children1=child1.getChildren()
-    #for i in children1:
-    #    print(i.getData())
-    #tree.printTree()
-    #search = int(input())
-    #mynode=tree.DFS(search)
-    #tree.addChildTree(mynode,10)
+# def main():
+#     # tree = GenralTree()
+#     # tree.SetRoot(2)
+#     # curr=tree.getRoot()
+#     # child1=tree.addChildTree(curr,3)
+#     # child2=tree.addChildTree(curr,4)
+#     # child3=tree.addChildTree(curr,5)
+#     # child11=tree.addChildTree(child1,6)
+#     # child12=tree.addChildTree(child1,7)
+#     # child21=tree.addChildTree(child2,8)
+#     # child211=tree.addChildTree(child21,9)
+#     # children1=child1.getChildren()
+#     #for i in children1:
+#     #    print(i.getData())
+#     #tree.printTree()
+#     #search = int(input())
+#     #mynode=tree.DFS(search)
+#     #tree.addChildTree(mynode,10)
 
-    #tree.DFS(6)
-    #ans=-1
-    # tree.findLongest(curr,0)
-    # print(tree.getLongest())
+#     #tree.DFS(6)
+#     #ans=-1
+#     # tree.findLongest(curr,0)
+#     # print(tree.getLongest())
 
-    tree = GenralTree()
-    tree.setRoot(0)
-    curr=tree.getRoot()
-    child1=tree.addChildTree(curr,1)
-    child2=tree.addChildTree(curr,2)
-    child3=tree.addChildTree(curr,3)
-    child31=tree.addChildTree(child3,4)
-    child311=tree.addChildTree(child31,5)
-    tree.findLongest(curr,0)
-    l = tree.longestPath(curr)
-    print(type(l))
-    print(l)
-    n = len(l) - 1
-    l1 = [l[n - i] for i in range(len(l))]
-    print(l1)
-    print(tree.getLongest())
-    child312=tree.addChildTree(child31,6)
-    child3121=tree.addChildTree(child312,7)
-    tree.findLongest(curr,0)
-    print(tree.getLongest())
-    child11=tree.addChildTree(child1,8)
-    child111=tree.addChildTree(child11,9)
-    child1111=tree.addChildTree(child111,10)
-    child11111=tree.addChildTree(child1111,11)
-    tree.findLongest(curr,0)
-    print(tree.getLongest())
-    print(tree.lastElem())
-    tree.visualize()
+#     tree = GenralTree()
+#     tree.setRoot(0)
+#     curr=tree.getRoot()
+#     child1=tree.addChildTree(curr,1)
+#     child2=tree.addChildTree(curr,2)
+#     child3=tree.addChildTree(curr,3)
+#     child31=tree.addChildTree(child3,4)
+#     child311=tree.addChildTree(child31,5)
+#     tree.findLongest(curr,0)
+#     l = tree.longestPath(curr)
+#     print(type(l))
+#     print(l)
+#     n = len(l) - 1
+#     l1 = [l[n - i] for i in range(len(l))]
+#     print(l1)
+#     print(tree.getLongest())
+#     child312=tree.addChildTree(child31,6)
+#     child3121=tree.addChildTree(child312,7)
+#     tree.findLongest(curr,0)
+#     print(tree.getLongest())
+#     child11=tree.addChildTree(child1,8)
+#     child111=tree.addChildTree(child11,9)
+#     child1111=tree.addChildTree(child111,10)
+#     child11111=tree.addChildTree(child1111,11)
+#     tree.findLongest(curr,0)
+#     print(tree.getLongest())
+#     print(tree.lastElem())
+#     tree.visualize()
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()

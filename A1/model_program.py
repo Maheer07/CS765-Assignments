@@ -10,6 +10,7 @@ from datetime import datetime
 from datetime import time
 
 
+#All these variables are defined in main function
 connected = {}
 txn_id = None
 transactions = []
@@ -18,12 +19,15 @@ peer2peer = None
 env = None
 start_time = None
 longest_chain = None
+trees = None
 blocknumbers = None
 
+file_txn = "Transactions.txt"
+file_block = "Blocks.txt"
 
-#month = {1: "January", 2: "February", 3: "March" , 4: "April", 5: "May", 6 : "June" , 7: "July", 8: "August", 9 : "September", 10 : "October" , 11 : "November" , 12 : "December"}
+
 #Took this class from https://www.geeksforgeeks.org/priority-queue-in-python/ with a change in delete function because of unfamiliarity with python data structures
-class PriorityQueue(object):
+class PriorityQueue(object): #This is the priority queue that will store all our events in the network
     def __init__(self):
         self.queue = []
   
@@ -35,7 +39,6 @@ class PriorityQueue(object):
   
     def insert(self, data):
         self.queue.append(data)
-        #print(len(self.queue))
 
   
     def delete(self):
@@ -48,7 +51,6 @@ class PriorityQueue(object):
             del self.queue[max]
             return item
         except IndexError:
-            #print()
             exit()
 
 class transaction:
@@ -160,7 +162,8 @@ class p2p(object):
         amt = random.uniform(0,high) #We select amount of txn from a unifrom distribution with ranges 0 and balance of sender 
         txn = transaction(peer,y,amt,self.txn_id) 
         if dummy==False: #Dummy = true is just for initialization
-            #print("Generating transaction " + str(self.txn_id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
+            with open(file_txn,"a") as ff:
+                ff.write("Generating transaction " + str(self.txn_id) + " at peer " + str(peer.id) + " at t= " + str(env.now) + "\n")
             self.txn_id += 1
             peer.transactions.append(txn) #Adding to txn pool
             e = event("forward transaction",t,txn,peer.id) #Generating forward txn event at the same time
@@ -177,14 +180,16 @@ class p2p(object):
                 txn.forwarded[peer.id-1][p-1] = True
                 txn.forwarded[p-1][peer.id-1] = True
                 timeout = latency(peer.id-1,p-1,self.ro_ij,1,self.c) #Calculate latency between two peers
-                #print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                with open(file_txn,"a") as ff:
+                    ff.write("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
                 e = event("recieve transaction",env.now + timeout,txn,p) #Generating recieve txn event at the reciever after time latency
                 self.event_queue.insert(e)
         
         yield self.env.timeout(0)
 
     def recieve_transaction(self,env,peer,txn):
-        #print("Recieved transaction " + str(txn.id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
+        with open(file_txn,"a") as ff:
+            ff.write("Recieved transaction " + str(txn.id) + " at peer " + str(peer.id) + " at t= " + str(env.now) + "\n")
         if txn not in peer.transactions: #Updating transaction pool
             peer.transactions.append(txn)
         for p in connected[peer.id]: 
@@ -192,7 +197,8 @@ class p2p(object):
                 txn.forwarded[peer.id-1][p-1] = True
                 txn.forwarded[p-1][peer.id-1] = True
                 timeout = latency(peer.id-1,p-1,self.ro_ij,1,self.c)
-                #print("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                with open(file_txn,"a") as ff:
+                    ff.write("Forwarding transaction " + str(txn.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
                 e = event("recieve transaction",env.now + timeout,txn,p)
                 self.event_queue.insert(e)  
 
@@ -216,7 +222,8 @@ class p2p(object):
         longest_chain_id = peer.blocktree.lastElem().id   #Finding parent ID by finding last block id in longest chain     
         b = block(self.blockid*1000 + peer.id,txns,t,peer.id,longest_chain_id,False) #Our generated block
     
-        print("Generating block " + str(self.blockid) + " at peer " + str(peer.id) + " at t= " + str(env.now))
+        with open(file_block,"a") as ff:
+            ff.write("Generating block " + str(self.blockid) + " at peer " + str(peer.id) + " at t= " + str(env.now) + "\n")
         e = event("forward block", t + timeout,b,peer.id) #Generating forward block event after the computed timeout
         self.event_queue.insert(e)
         
@@ -236,7 +243,8 @@ class p2p(object):
                     valid = False
                     break 
             if valid: #If block is valid
-                print("Generated block " + str(block.id) + " at peer " + str(peer.id) + " time = " + str(env.now) + " with txns " + str([x.id for x in block.txnlist]))
+                with open(file_block,"a") as ff:
+                    ff.write("Generated block " + str(block.id) + " at peer " + str(peer.id) + " time = " + str(env.now) + " with txns " + str([x.id for x in block.txnlist]) + "\n")
                 self.blockid += 1
                 blocknumbers[peer.id - 1] += 1
                 block.mod_txns() #Setting included field in the txns used as true
@@ -252,6 +260,13 @@ class p2p(object):
                 peer.blocktree.addChildTree(b,block)   #Adding block to the peer's blockchain tree
 
                 #Update longest_chain
+                trees[peer.id] = peer.blocktree #Updating the value of blocktree. We'll use this in part 8
+                #We maintain a the longest chain of a peer with a dictionary longest_chain for part 8. Here we are updating it
+                root = peer.blocktree.getRoot()
+                lpath = peer.blocktree.longestPath(root)
+                n = len(lpath) - 1
+                final = [lpath[n-i] for i in range(len(lpath))]
+                longest_chain[peer.id] = final
 
                 e = event("generate block",env.now,block,peer.id) #We continue to mine on this generated valid block
                 self.event_queue.insert(e)                
@@ -278,15 +293,18 @@ class p2p(object):
                         block.forwarded[peer.id-1][p-1] = True
                         block.forwarded[p-1][peer.id-1] = True
                         timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
-                        print("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                        with open(file_block,"a") as ff:
+                            ff.write("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
                         e = event("recieve block",env.now + timeout,block,p) #Generating a recieve block event at the reciever after time latency
                         self.event_queue.insert(e)
             
             else:
-                print("Block " + str(block.id) + " is invalid at peer " + str(peer.id))
+                with open(file_block,"a") as ff:
+                    ff.write("Block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
 
         else:
-            print("Mining for block " + str(block.id) + " invalid due to change in longest chain at peer " + str(peer.id) + " last block " + str(l) + " but parent is " + str(block.previd))
+            with open(file_block,"a") as ff:
+                ff.write("Mining for block " + str(block.id) + " invalid due to change in longest chain at peer " + str(peer.id) + " last block " + str(l) + " but parent is " + str(block.previd) + "\n")
         
         yield self.env.timeout(0)      
 
@@ -298,7 +316,8 @@ class p2p(object):
                 self.event_queue.insert(e)
 
             else:
-                print("Recieved block " + str(block.id) + " at peer " + str(peer.id) + " at t= " + str(env.now))
+                with open(file_block,"a") as ff:
+                    ff.write("Recieved block " + str(block.id) + " at peer " + str(peer.id) + " at t= " + str(env.now)  + "\n")
                 block1,boolean = peer.blocktree.DFS(block.previd) #Checking if the parent block exists in the blockchain tree
                 if boolean != False:
                     size = block.size()
@@ -327,7 +346,16 @@ class p2p(object):
                                 e = event("recieve block",env.now,b,peer.id)
                                 self.event_queue.insert(e)  
 
-                        #Update longest_chain            
+                        #Update longest_chain  
+
+                        trees[peer.id] = peer.blocktree #Updating the value of blocktree. We'll use this in part 8
+                        #We maintain a the longest chain of a peer with a dictionary longest_chain for part 8. Here we are updating it
+                        root = peer.blocktree.getRoot()
+                        lpath = peer.blocktree.longestPath(root)
+                        n = len(lpath) - 1
+                        final = [lpath[n-i] for i in range(len(lpath))]
+                        longest_chain[peer.id] = final                        
+                                  
 
                         #Now we write about this block in the peer file containing info about all blocks in the tree
                         filename = "Peer " + str(peer.id) + " blocks.txt" 
@@ -348,12 +376,14 @@ class p2p(object):
                                 block.forwarded[peer.id-1][p-1] = True
                                 block.forwarded[p-1][peer.id-1] = True
                                 timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c)
-                                #print("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout))
+                                with open(file_block,"a") as ff:
+                                    ff.write("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
                                 e = event("recieve block",env.now + timeout,block,p)
                                 self.event_queue.insert(e)
 
                     else: #In case block was invalid
-                        print("Block " + str(block.id) + " is invalid at peer " + str(peer.id))
+                        with open(file_block,"a") as ff:
+                            ff.write("Block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
                 
                 else: #In case block's parent hasn't arrived, we keep this block in the pending dictionary and process this block after the parent block arrives if its valid
                     prev = block.previd
@@ -399,7 +429,7 @@ class p2p(object):
 
 def peer_function(env): #Main function that will run in the simulation
     tk = [10000 for i in range(num_peers)]
-    peer2peer = p2p(env,100,tk,0,1,peers,connected,ro_ij,c) #Creating peer 2 peer network object
+    peer2peer = p2p(env,10,tk,0,1,peers,connected,ro_ij,c) #Creating peer 2 peer network object
     for peer in peer2peer.peers: #Generating dummy transactions that will start transaction generation in all the peers
         yield env.process(peer2peer.generate_transaction(env,peer,True))
 
@@ -421,6 +451,7 @@ if __name__ == '__main__':
     peers = [peer(i+1,b) for i in range(num_peers)]  #Generating the peer list
     slow = random.sample(peers,int(num_peers*z)) #List with slow peers
     fast = [i for i in peers if i not in slow] #List with fast peers
+    trees = {}
     c = [] #Matrix that will determine c_ij as per the latency formula
     for i in peers:
         temp = []
@@ -436,16 +467,39 @@ if __name__ == '__main__':
     
     s = [x.id for x in slow] #Slow peer ids
     f = [x.id for x in fast] #Fast peer ids
-    connected = MakeConnections([i+1 for i in range(num_peers)],s,f,int(num_peers / 2))
+    connected = MakeConnections([i+1 for i in range(num_peers)],s,f,int(num_peers / 2)) #Connections matrix (Refer to connections.py for the logic)
 
     start_time = datetime.now() #Start time of the simulation
 
     blocknumbers = [0 for i in range(num_peers)] #Denotes number of blocks generated by each peer
+    longest_chain = {}  #This will store longest chain for every block
 
 
     env = simpy.Environment()  #Creating the environment of the simulation
     env.process(peer_function(env)) #Running peer function in the environment
-    env.run(until=90000)  #Run untill timeout
+    env.run(until=9000)  #Run untill timeout
+
+    for i in range(num_peers):
+        longest_ids = [x.id for x in longest_chain[i+1]][1:] #List of longest ids in the longest chain
+        length = len(longest_ids)
+        with open("Peer" + str(i+1) + "_Analysis.txt", "a") as f1:
+            f1.write("The longest chain is of length " + str(length) + " consists of blocks with id(s) " + str(longest_ids) + "\n")
+        contri = [0 for j in range(num_peers)]
+        for item in longest_chain[i+1][1:]:
+            contri[item.creatorid-1] += 1
+        # fraction = []
+        # for j in range(num_peers):
+        #     fraction.append(float(contri[j] / blocknumbers[j]))
+        with open("Peer" + str(i+1) + "_Analysis.txt", "a") as f1: #Updating analysis doc
+            for j in range(num_peers):
+                f1.write("Peer " + str(j+1) + " contributed " + str(contri[j]) + " out of total " + str(blocknumbers[j]) + "\n")
+            f1.write("Slow nodes: " + str(s) + "\n")
+            f1.write("Fast nodes: " + str(f) + "\n")
+
+        
+
+    for i in range(num_peers):
+        trees[i+1].visualize()
     
 
 
