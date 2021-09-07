@@ -1,3 +1,6 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+
 # Ref:
 # https://gist.github.com/goldsamantha/36767f42c25ae6b97fbc
 class Node:
@@ -35,6 +38,7 @@ class GenralTree:
     def __init__(self):
         self.root = None
         self.longest=0
+        self.visual = []
 
     def getLongest(self):
         return self.longest
@@ -51,6 +55,9 @@ class GenralTree:
     def addChildTree(self,parent,val):
         nd = Node(val, parent)
         parent.addChild(nd)
+        p = parent.getData().id
+        c = nd.getData().id
+        self.visual.append([p, c])
         return nd
 
     def printTree(self):#has bugs
@@ -117,7 +124,13 @@ class GenralTree:
         return temp[ind]
 
     def lastElem(self):
-        return self.longestPath(self.root)[0]            
+        return self.longestPath(self.root)[0]  
+
+    def visualize(self):
+        G = nx.Graph()
+        G.add_edges_from(self.visual)
+        nx.draw_networkx(G)
+        plt.show()         
 
 
 
@@ -173,6 +186,7 @@ def main():
     tree.findLongest(curr,0)
     print(tree.getLongest())
     print(tree.lastElem())
+    tree.visualize()
 
 if __name__ == '__main__':
     main()
