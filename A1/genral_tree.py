@@ -78,6 +78,21 @@ class GenralTree:
                 [stack.append(elem) for elem in curr.getChildren()]
         return (Node(0),False)
 
+    def get_height(self,val):
+        stack=[]
+        h = 0
+        curr=self.root
+        stack.append(curr)
+
+        while len(stack)>0:
+            curr = stack.pop()
+            if curr.getData().id == val:
+                return h
+            else:
+                [stack.append(elem) for elem in curr.getChildren()]
+                h += 1
+        return -1       
+
     def findLongest(self, Node,height):
         #print(len(Node.getChildren()))
         if len(Node.getChildren())==0:
@@ -140,6 +155,12 @@ def main():
     child31=tree.addChildTree(child3,4)
     child311=tree.addChildTree(child31,5)
     tree.findLongest(curr,0)
+    l = tree.longestPath(curr)
+    print(type(l))
+    print(l)
+    n = len(l) - 1
+    l1 = [l[n - i] for i in range(len(l))]
+    print(l1)
     print(tree.getLongest())
     child312=tree.addChildTree(child31,6)
     child3121=tree.addChildTree(child312,7)
