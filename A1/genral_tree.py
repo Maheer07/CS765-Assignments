@@ -67,6 +67,7 @@ class GenralTree:   #Basic tree
 
         while len(stack)>0:
             curr = stack.pop()
+#            if curr.getData() == val:
             if curr.getData().id == val:
                 return (curr,True)
             else:
@@ -81,12 +82,23 @@ class GenralTree:   #Basic tree
 
         while len(stack)>0:
             curr = stack.pop()
+            #if curr.getData() == val:
             if curr.getData().id == val:
                 return h
             else:
                 [stack.append(elem) for elem in curr.getChildren()]
                 h += 1
         return -1       
+
+    def getPath(self,val):
+        node,b=self.DFS(val)
+        path = []
+        while(node!=self.root):
+            path.append(node)
+            node=node.getParent()
+        path.append(self.root)
+        path.reverse()
+        return path
 
     def findLongest(self, Node,height): #Updates longest path length in the tree
         #print(len(Node.getChildren()))
@@ -114,6 +126,9 @@ class GenralTree:   #Basic tree
     def lastElem(self): #Last node in the longest path
         return self.longestPath(self.root)[0]  
 
+    def lenlongest(self):
+        return len(self.longestPath(self.root))
+
     def visualize(self):    #Displaying the tree(used at the end)
         G = nx.Graph()
         G.add_edges_from(self.visual)
@@ -123,58 +138,61 @@ class GenralTree:   #Basic tree
 
 
 
-# def main():
-#     # tree = GenralTree()
-#     # tree.SetRoot(2)
-#     # curr=tree.getRoot()
-#     # child1=tree.addChildTree(curr,3)
-#     # child2=tree.addChildTree(curr,4)
-#     # child3=tree.addChildTree(curr,5)
-#     # child11=tree.addChildTree(child1,6)
-#     # child12=tree.addChildTree(child1,7)
-#     # child21=tree.addChildTree(child2,8)
-#     # child211=tree.addChildTree(child21,9)
-#     # children1=child1.getChildren()
-#     #for i in children1:
-#     #    print(i.getData())
-#     #tree.printTree()
-#     #search = int(input())
-#     #mynode=tree.DFS(search)
-#     #tree.addChildTree(mynode,10)
+def main():
+    # tree = GenralTree()
+    # tree.setRoot(2)
+    # curr=tree.getRoot()
+    # child1=tree.addChildTree(curr,3)
+    # child2=tree.addChildTree(curr,4)
+    # child3=tree.addChildTree(curr,5)
+    # child11=tree.addChildTree(child1,6)
+    # child12=tree.addChildTree(child1,7)
+    # child21=tree.addChildTree(child2,8)
+    # child211=tree.addChildTree(child21,9)
+    # children1=child1.getChildren()
+    # for i in children1:
+    #    print(i.getData())
+    # l = tree.getPath(9)
+    # for item in l:
+    #     print(item.getData())
 
-#     #tree.DFS(6)
-#     #ans=-1
-#     # tree.findLongest(curr,0)
-#     # print(tree.getLongest())
+    # search = int(input())
+    # mynode=tree.DFS(search)
+    # tree.addChildTree(mynode,10)
 
-#     tree = GenralTree()
-#     tree.setRoot(0)
-#     curr=tree.getRoot()
-#     child1=tree.addChildTree(curr,1)
-#     child2=tree.addChildTree(curr,2)
-#     child3=tree.addChildTree(curr,3)
-#     child31=tree.addChildTree(child3,4)
-#     child311=tree.addChildTree(child31,5)
-#     tree.findLongest(curr,0)
-#     l = tree.longestPath(curr)
-#     print(type(l))
-#     print(l)
-#     n = len(l) - 1
-#     l1 = [l[n - i] for i in range(len(l))]
-#     print(l1)
-#     print(tree.getLongest())
-#     child312=tree.addChildTree(child31,6)
-#     child3121=tree.addChildTree(child312,7)
-#     tree.findLongest(curr,0)
-#     print(tree.getLongest())
-#     child11=tree.addChildTree(child1,8)
-#     child111=tree.addChildTree(child11,9)
-#     child1111=tree.addChildTree(child111,10)
-#     child11111=tree.addChildTree(child1111,11)
-#     tree.findLongest(curr,0)
-#     print(tree.getLongest())
-#     print(tree.lastElem())
-#     tree.visualize()
+    # tree.DFS(6)
+    # ans=-1
+    # tree.findLongest(curr,0)
+    # print(tree.getLongest())
 
-# if __name__ == '__main__':
-#     main()
+    tree = GenralTree()
+    tree.setRoot(0)
+    curr=tree.getRoot()
+    child1=tree.addChildTree(curr,1)
+    child2=tree.addChildTree(curr,2)
+    child3=tree.addChildTree(curr,3)
+    child31=tree.addChildTree(child3,4)
+    child311=tree.addChildTree(child31,5)
+    tree.findLongest(curr,0)
+    l = tree.longestPath(curr)
+    print(type(l))
+    print(l)
+    n = len(l) - 1
+    l1 = [l[n - i] for i in range(len(l))]
+    print(l1)
+    print(tree.getLongest())
+    child312=tree.addChildTree(child31,6)
+    child3121=tree.addChildTree(child312,7)
+    tree.findLongest(curr,0)
+    print(tree.getLongest())
+    child11=tree.addChildTree(child1,8)
+    child111=tree.addChildTree(child11,9)
+    child1111=tree.addChildTree(child111,10)
+    child11111=tree.addChildTree(child1111,11)
+    tree.findLongest(curr,0)
+    print(tree.getLongest())
+    print(tree.lastElem())
+    tree.visualize()
+
+if __name__ == '__main__':
+    main()
