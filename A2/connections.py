@@ -1,7 +1,7 @@
 import numpy as np
 import random
 # ref article bitcoin and bitcoincash: network analysis
-def MakeConnections(l, snodes, fnodes, min_edges, slow_param = 1, fast_param = 3):
+def MakeConnections(l, snodes, fnodes, min_edges,zeta, slow_param = 1, fast_param = 3):
 	# l is a list of ids(0,1,2,3....n-1),snodes is list of ids of slow noes and fnodes is list of ids of fast nodes
 	# m is the minimum number of edges for each peer
 	# slow_param isthe strength of slow peer and fast param is the strength of fast peer
@@ -59,4 +59,12 @@ def MakeConnections(l, snodes, fnodes, min_edges, slow_param = 1, fast_param = 3
 			connections2[smap[x]]=temp4
 		else:
 			connections2[fmap[x]]=temp4
+
+	ind = np.random.choice(l,int(zeta*(len(l))),replace = False)
+	connections2[len(l)+1]=list(ind)
+
+	for i in ind:
+#		np.append(connections2[i],len(l)+1)
+		#print(type(connections2[i]))
+		connections2[i].append(len(l) + 1)
 	return connections2

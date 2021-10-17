@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 # Ref:
 # https://gist.github.com/goldsamantha/36767f42c25ae6b97fbc
 class Node: #Component of a tree. This will be a block in our implementation
-    def __init__(self,val,parent=None,children=None):
+    def __init__(self,val,level,parent=None,children=None):
         self.val=val    #Value (block for us)
         self.parent=parent  #Parent node
+        self.level = level
         if children is None:    #Node children
             self.children = []
         else:
@@ -30,6 +31,9 @@ class Node: #Component of a tree. This will be a block in our implementation
     def getParent(self):
         return self.parent
 
+    def getlevel(self):
+        return self.level
+
     def setParent(self,val):
         self.parent=val
         return
@@ -48,12 +52,13 @@ class GenralTree:   #Basic tree
         return self.root
 
     def setRoot(self,root):
-        nd=Node(root)
+        nd=Node(root,0)
         self.root=nd
 
 
     def addChildTree(self,parent,val):  #Add child node with value val to the parent 
-        nd = Node(val, parent)
+        x = parent.getlevel()
+        nd = Node(val,x+1, parent)
         parent.addChild(nd)
         p = parent.getData().id
         c = nd.getData().id
@@ -72,23 +77,13 @@ class GenralTree:   #Basic tree
                 return (curr,True)
             else:
                 [stack.append(elem) for elem in curr.getChildren()]
-        return (Node(0),False)
+        return (Node(0,0),False)
+
+   
 
     def get_height(self,val):   #Height of a node with value val
-        stack=[]
-        h = 0
-        curr=self.root
-        stack.append(curr)
-
-        while len(stack)>0:
-            curr = stack.pop()
-            #if curr.getData() == val:
-            if curr.getData().id == val:
-                return h
-            else:
-                [stack.append(elem) for elem in curr.getChildren()]
-                h += 1
-        return -1       
+        node, b = self.DFS(val)
+        return node.getlevel()
 
     def getPath(self,val):
         node,b=self.DFS(val)
@@ -138,7 +133,7 @@ class GenralTree:   #Basic tree
 
 
 
-def main():
+#def main():
     # tree = GenralTree()
     # tree.setRoot(2)
     # curr=tree.getRoot()
@@ -165,34 +160,43 @@ def main():
     # tree.findLongest(curr,0)
     # print(tree.getLongest())
 
-    tree = GenralTree()
-    tree.setRoot(0)
-    curr=tree.getRoot()
-    child1=tree.addChildTree(curr,1)
-    child2=tree.addChildTree(curr,2)
-    child3=tree.addChildTree(curr,3)
-    child31=tree.addChildTree(child3,4)
-    child311=tree.addChildTree(child31,5)
-    tree.findLongest(curr,0)
-    l = tree.longestPath(curr)
-    print(type(l))
-    print(l)
-    n = len(l) - 1
-    l1 = [l[n - i] for i in range(len(l))]
-    print(l1)
-    print(tree.getLongest())
-    child312=tree.addChildTree(child31,6)
-    child3121=tree.addChildTree(child312,7)
-    tree.findLongest(curr,0)
-    print(tree.getLongest())
-    child11=tree.addChildTree(child1,8)
-    child111=tree.addChildTree(child11,9)
-    child1111=tree.addChildTree(child111,10)
-    child11111=tree.addChildTree(child1111,11)
-    tree.findLongest(curr,0)
-    print(tree.getLongest())
-    print(tree.lastElem())
-    tree.visualize()
+    # tree = GenralTree()
+    # tree.setRoot(0)
+    # curr=tree.getRoot()
+    # child1=tree.addChildTree(curr,1)
+    # child2=tree.addChildTree(curr,2)
+    # child3=tree.addChildTree(curr,3)
+    # child31=tree.addChildTree(child3,4)
+    # child311=tree.addChildTree(child31,5)
+    # print(tree.lenlongest())
 
-if __name__ == '__main__':
-    main()
+    # print(tree.get_height(0))
+    # print(tree.get_height(1))
+    # print(tree.get_height(2))
+    # print(tree.get_height(3))    
+    # print(tree.get_height(4))
+    # print(tree.get_height(5))
+
+    # tree.findLongest(curr,0)
+    # l = tree.longestPath(curr)
+    # print(type(l))
+    # print(l)
+    # n = len(l) - 1
+    # l1 = [l[n - i] for i in range(len(l))]
+    # print(l1)
+    # print(tree.getLongest())
+    # child312=tree.addChildTree(child31,6)
+    # child3121=tree.addChildTree(child312,7)
+    # tree.findLongest(curr,0)
+    # print(tree.getLongest())
+    # child11=tree.addChildTree(child1,8)
+    # child111=tree.addChildTree(child11,9)
+    # child1111=tree.addChildTree(child111,10)
+    # child11111=tree.addChildTree(child1111,11)
+    # tree.findLongest(curr,0)
+    # print(tree.getLongest())
+    # print(tree.lastElem())
+    # tree.visualize()
+
+# if __name__ == '__main__':
+#     main()

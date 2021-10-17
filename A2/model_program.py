@@ -16,6 +16,7 @@ connected = {}
 init_balances = 10000 #Initial balance of each peer
 txn_id = None 
 transactions = []
+num_blocks = None
 num_peers = 5
 peer2peer = None
 env = None
@@ -28,6 +29,7 @@ attack = None #This will store which attack we are demonstrating
 
 file_txn = "Transactions.txt"
 file_block = "Blocks.txt"
+file_attacker = "Attacker.txt"
 
 
 #Took this class from https://www.geeksforgeeks.org/priority-queue-in-python/ with a change in delete function because of unfamiliarity with python data structures
@@ -288,6 +290,7 @@ class p2p(object):
                 peer.balances[peer.id-1] += 50 #Adding mining fee
                 b,b1 = peer.blocktree.DFS(block.previd)
                 peer.blocktree.addChildTree(b,block)   #Adding block to the peer's blockchain tree
+                num_blocks[peer.id-1] += 1
 
                 #Update longest_chain
                 trees[peer.id] = peer.blocktree #Updating the value of blocktree. We'll use this in part 8
@@ -385,7 +388,8 @@ class p2p(object):
                                 peer.balances[s.id-1] -= amt
                                 peer.balances[r.id-1] += amt
                             peer.balances[block.creatorid-1] += 50
-                            peer.blocktree.addChildTree(block1,block)   #Add the block to the blockchain tree of the peer  
+                            peer.blocktree.addChildTree(block1,block)   #Add the block to the blockchain tree of the peer 
+                            num_blocks[peer.id-1] += 1                             
                             prev = block.previd
                             if prev in peer.pending: #If any children of the current block had arrived before then process them by creating a recieve event at the current time
                                 for b in peer.pending[prev]:
@@ -445,220 +449,326 @@ class p2p(object):
         #Recieve block event for an attacker
         else:
 
-            priv_length = peer.private_chain.lenlongest()
-            honest_length = peer.blocktree.lenlongest()
+            if block not in peer.arrived: #This ensures that even when multiple senders send the adversary the same block he checks it only once
 
-            lead = priv_length - honest_length
+                priv_length = peer.private_chain.lenlongest() 
 
+                honest_length = peer.blocktree.lenlongest() - peer.blocktree.get_height(peer.priv_root.getData().id)
+
+                lead = priv_length - honest_length #Lead the adversary had in his private chain over honest chain before recieving this block
+                
+
+
+
+                if block not in peer.arrived: #If a block has already arrived, no need to process the same block again
+                    # if(block.dummy == True): #Checking if block is a dummy, which is just a trigger to start block generation
+                    #     e = event("generate block",env.now,peer.id)
+                    #     self.event_queue.insert(e)
+
+
+                    with open(file_block,"a") as ff:
+                        ff.write("Recieved honest block " + str(block.id) + " at attacker peer " + str(peer.id) + " at t= " + str(env.now)  + "\n")
+                    with open(file_attacker,"a") as ff:
+                        ff.write("Recieved honest block " + str(block.id) + " at attacker peer " + str(peer.id) + " at t= " + str(env.now)  + "\n")                    
+                    block1,boolean = peer.blocktree.DFS(block.previd) #Checking if the parent block exists in the blockchain tree
+                    if boolean != False:
+
+                        size = block.size()
+                        valid = True
+                        prev_balances = peer.balances
+                        for txn in block.txnlist: #Checking validity of the recieved block
+                            if txn in peer.transactions:
+                                s = txn.src
+                                r = txn.dest
+                                amt = txn.amt
+                                if (peer.balances[s.id-1] - amt) < 0:
+                                    valid = False                        
+                                    txn.invalid = True
+                                    break
+                                else:
+                                    peer.balances[s.id-1] -= amt
+                                    peer.balances[r.id-1] += amt                                 
+
+                        if valid: #If the recieved block is valid
+                            peer.balances = prev_balances
+                            peer.update_transactions() 
+                            for txn in block.txnlist: #Update balance of peers
+                                s = txn.src
+                                r = txn.dest
+                                amt = txn.amt
+                                peer.balances[s.id-1] -= amt
+                                peer.balances[r.id-1] += amt
+                            peer.balances[block.creatorid-1] += 50
+
+                            with open(file_block,"a") as ff:
+                                ff.write("Honest block " + str(block.id) + " is valid at attacker peer " + str(peer.id) + " and lead is " + str(lead) + "\n")
+
+                            with open(file_attacker,"a") as ff:
+                                ff.write("Honest block " + str(block.id) + " is valid at attacker peer " + str(peer.id) + " and lead is " + str(lead) + "\n")    
             
 
 
+                            #Lead == 1. 0' state    
+                            if lead == 1:
+                                #If the lead of the attacker was only 1 block and he recieves an honest valid block, then he simply sends his block
+                                if attack == "sel": #If the attack to be performed is a selfish mining attack
+                                    b = peer.private_chain.lastElem()
+                                    b1,b2 = peer.blocktree.DFS(b.previd)
 
-            if block not in peer.arrived: #If a block has already arrived, no need to process the same block again
-                # if(block.dummy == True): #Checking if block is a dummy, which is just a trigger to start block generation
-                #     e = event("generate block",env.now,peer.id)
-                #     self.event_queue.insert(e)
-
-
-                with open(file_block,"a") as ff:
-                    ff.write("Recieved honest block " + str(block.id) + " at attacker peer " + str(peer.id) + " at t= " + str(env.now)  + "\n")
-                block1,boolean = peer.blocktree.DFS(block.previd) #Checking if the parent block exists in the blockchain tree
-                if boolean != False:
-
-                    size = block.size()
-                    valid = True
-                    prev_balances = peer.balances
-                    for txn in block.txnlist: #Checking validity of the recieved block
-                        if txn in peer.transactions:
-                            s = txn.src
-                            r = txn.dest
-                            amt = txn.amt
-                            if (peer.balances[s.id-1] - amt) < 0:
-                                valid = False                        
-                                txn.invalid = True
-                                break
-                            else:
-                                peer.balances[s.id-1] -= amt
-                                peer.balances[r.id-1] += amt                                 
-
-                    if valid:
-                        peer.balances = prev_balances
-                        peer.update_transactions() 
-                        for txn in block.txnlist: #Update balance of peers
-                            s = txn.src
-                            r = txn.dest
-                            amt = txn.amt
-                            peer.balances[s.id-1] -= amt
-                            peer.balances[r.id-1] += amt
-                        peer.balances[block.creatorid-1] += 50
-
-                        with open(file_block,"a") as ff:
-                            ff.write("Honest block " + str(block.id) + " is valid at attacker peer " + str(peer.id) + " and lead is " + str(lead) + "\n")
-        
-                        # r1 = peer.root
-                        # r2 = peer.priv_root
-                        # l1 = [x.id for x in peer.blocktree.findLongest(r1,0)]
-                        # l2 = [x.id for x in peer.private_chain.findLongest(r2,0)]
-                        # print(l1)
-                        # print(l2)
+                                    if b2 == True:
+                                        size = b.size() #Getting block size                                
+                                        peer.blocktree.addChildTree(b1,b) #Adding the block to the honest chain before forwarding
+                                        num_blocks[peer.id-1] += 1                                        
 
 
-                        #Lead == 1 case will be the same for both selfish and stubborn mining attacks    
-                        if lead == 1:
-                            #If the lead of the attacker was only 1 block and he recieves an honest valid block, then he simply sends his block
-                            b = peer.private_chain.lastElem() 
-                            size = b.size() #Getting block size
-                            for p in self.connected[peer.id]: #Forwarding the block, similar to txns
-                                if b.forwarded[peer.id-1][p-1] == False:
-                                    b.forwarded[peer.id-1][p-1] = True
-                                    b.forwarded[p-1][peer.id-1] = True
-                                    timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
-                                    with open(file_block,"a") as ff:
-                                        ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
-                                    e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
-                                    self.event_queue.insert(e)
-
-                            
-
-                        elif lead == 2:
-                            #If the lead of the attacker is 2 then we broadcast the whole chain...basically a for loop starting from the root node of private chain
-                            if attack == "sel": #Selfish mining attack lead = 2
-                                root = peer.priv_root
-                                l_path = peer.private_chain.findLongest(root,0) #All the blocks of the longest chain in the reverse order                                
-                                b = l_path[1] #First we send second last block in the private chain
-                                size = b.size() #Getting block size
-                                for p in self.connected[peer.id]: #Forwarding the block, similar to txns
-                                    if b.forwarded[peer.id-1][p-1] == False:
-                                        b.forwarded[peer.id-1][p-1] = True
-                                        b.forwarded[p-1][peer.id-1] = True
-                                        timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
-                                        with open(file_block,"a") as ff:
-                                            ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
-                                        e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
-                                        self.event_queue.insert(e)
-
-                                b = l_path[0] #Now we send the last block in the private chain
-                                size = b.size() #Getting block size
-                                for p in self.connected[peer.id]: #Forwarding the block, similar to txns
-                                    if b.forwarded[peer.id-1][p-1] == False:
-                                        b.forwarded[peer.id-1][p-1] = True
-                                        b.forwarded[p-1][peer.id-1] = True
-                                        timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
-                                        with open(file_block,"a") as ff:
-                                            ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
-                                        e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
-                                        self.event_queue.insert(e)                                    
-
-                            
-                            elif attack == "stu": #Stubborn mining attack lead = 2
-                                root = peer.priv_root
-                                l_path = peer.private_chain.findLongest(root,0) #All the blocks of the longest chain in the reverse order
-                                b = l_path[1] #Second last block in the private chain
-                                size = b.size() #Getting block size
-                                for p in self.connected[peer.id]: #Forwarding the block, similar to txns
-                                    if b.forwarded[peer.id-1][p-1] == False:
-                                        b.forwarded[peer.id-1][p-1] = True
-                                        b.forwarded[p-1][peer.id-1] = True
-                                        timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
-                                        with open(file_block,"a") as ff:
-                                            ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
-                                        e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
-                                        self.event_queue.insert(e)                                
+                                        #Now we write about this block in the peer file containing info about all blocks in the tree
+                                        filename = "Peer " + str(peer.id) + " blocks.txt" 
+                                        current = add_time(start_time , int(env.now))
+                                        depth = peer.blocktree.get_height(b.id)
+                                        if b.previd == 0:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", Genesis block\n"
+                                        else:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", " + str(b.previd) + "\n"
+                                        with open(filename, "a") as f:
+                                            f.write(content)
 
 
-                                                                                         
+                                        for p in self.connected[peer.id]: #Forwarding the block, similar to txns
+                                            if b.forwarded[peer.id-1][p-1] == False:
+                                                b.forwarded[peer.id-1][p-1] = True
+                                                b.forwarded[p-1][peer.id-1] = True
+                                                timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
+                                                with open(file_block,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                                                with open(file_attacker,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                                                e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
+                                                self.event_queue.insert(e)
+                                
+                                #In the stubborn mining attack we won't broadcast the adversary's mined block. We'll continue mining on the private chain
+                        
 
-
-
-                        elif lead > 2:
-                            #If the lead is greater than 2 and we see an honest valid block, then we release 1 block from our private chain
-                            #Same for selfish and stubborn mining attacks
-                            root = peer.priv_root
-                            l_path = peer.private_chain.findLongest(root,0)
-                            b = l_path[lead-1] 
-                            size = b.size() #Getting block size
-                            for p in self.connected[peer.id]: #Forwarding the block, similar to txns
-                                if b.forwarded[peer.id-1][p-1] == False:
-                                    b.forwarded[peer.id-1][p-1] = True
-                                    b.forwarded[p-1][peer.id-1] = True
-                                    timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
-                                    with open(file_block,"a") as ff:
-                                        ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
-                                    e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
-                                    self.event_queue.insert(e)                            
-
-                        else:
-                            #If the lead was 0 and honest block was discovered
-                            self.private_chain = GenralTree()
-                            self.private_chain.setRoot(block)
-                            self.priv_root = self.private_chain.getRoot()                                        
-                            e = event("generate selfish block", env.now,block, peer.id)
-                            self.event_queue.insert(e)
-                            
-
-
-                        peer.blocktree.addChildTree(block1,block)   #Add the block to the blockchain tree of the peer  
-                        prev = block.previd
-                        if prev in peer.pending: #If any children of the current block had arrived before then process them by creating a recieve event at the current time
-                            for b in peer.pending[prev]:
-                                e = event("recieve block",env.now,b,peer.id)
-                                self.event_queue.insert(e)  
-
-                        #Update longest_chain  
-
-                        trees[peer.id] = peer.blocktree #Updating the value of blocktree. We'll use this in part 8
-                        #We maintain a the longest chain of a peer with a dictionary longest_chain for part 8. Here we are updating it
-                        root = peer.blocktree.getRoot()
-                        lpath = peer.blocktree.longestPath(root)
-                        n = len(lpath) - 1
-                        final = [lpath[n-i] for i in range(len(lpath))]
-                        longest_chain[peer.id] = final                        
                                 
 
-                        #Now we write about this block in the peer file containing info about all blocks in the tree
-                        filename = "Peer " + str(peer.id) + " blocks.txt" 
-                        current = add_time(start_time , int(env.now))
-                        depth = peer.blocktree.get_height(block.id)
-                        if block.previd == 0:
-                            content = str(block.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", Genesis block\n"
-                        else:
-                            content = str(block.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", " + str(block.previd) + "\n"
-                        with open(filename, "a") as f:
-                            f.write(content)
+                            elif lead == 2:
+                                #If the lead of the attacker is 2 then we broadcast the whole chain...basically a for loop starting from the root node of private chain
+                                if attack == "sel": #Selfish mining attack lead = 2
+                                    root = peer.priv_root
+                                    l_path = peer.private_chain.longestPath(root) #All the blocks of the longest chain in the reverse order                                
+                                    b = l_path[1] #First we send second last block in the private chain
+                                    b1,b2 = peer.blocktree.DFS(b.previd)
+                                    if b2 == True:
+                                        size = b.size() #Getting block size                                    
+                                        peer.blocktree.addChildTree(b1,b) #Adding the block to the honest chain before forwarding   
+                                        num_blocks[peer.id-1] += 1                                        
 
+
+                                        #Now we write about this block in the peer file containing info about all blocks in the tree
+                                        filename = "Peer " + str(peer.id) + " blocks.txt" 
+                                        current = add_time(start_time , int(env.now))
+                                        depth = peer.blocktree.get_height(b.id)
+                                        if b.previd == 0:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", Genesis block\n"
+                                        else:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", " + str(b.previd) + "\n"
+                                        with open(filename, "a") as f:
+                                            f.write(content)
+
+
+
+
+                                        for p in self.connected[peer.id]: #Forwarding the block, similar to txns
+                                            if b.forwarded[peer.id-1][p-1] == False:
+                                                b.forwarded[peer.id-1][p-1] = True
+                                                b.forwarded[p-1][peer.id-1] = True
+                                                timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
+                                                with open(file_block,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                                                with open(file_attacker,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")                                            
+                                                e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
+                                                self.event_queue.insert(e)
+
+                                    b = l_path[0] #Now we send the last block in the private chain
+                                    size = b.size() #Getting block size
+                                    b1,b2 = peer.blocktree.DFS(b.previd)
+
+                                    if b2 == True:
+
+                                        peer.blocktree.addChildTree(b1,b) #Adding the block to the honest chain before forwarding  
+                                        num_blocks[peer.id-1] += 1                                        
+
+
+
+                                        #Now we write about this block in the peer file containing info about all blocks in the tree
+                                        filename = "Peer " + str(peer.id) + " blocks.txt" 
+                                        current = add_time(start_time , int(env.now))
+                                        depth = peer.blocktree.get_height(b.id)
+                                        if b.previd == 0:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", Genesis block\n"
+                                        else:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", " + str(b.previd) + "\n"
+                                        with open(filename, "a") as f:
+                                            f.write(content)
+
+
+
+                                        for p in self.connected[peer.id]: #Forwarding the block, similar to txns
+                                            if b.forwarded[peer.id-1][p-1] == False:
+                                                b.forwarded[peer.id-1][p-1] = True
+                                                b.forwarded[p-1][peer.id-1] = True
+                                                timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
+                                                with open(file_block,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                                                with open(file_attacker,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                                                e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
+                                                self.event_queue.insert(e)                                    
+
+                                
+                                elif attack == "stu": #Stubborn mining attack lead = 2
+                                    root = peer.priv_root
+                                    peer.private_chain.findLongest(root,0)
+                                    l_path = peer.private_chain.longestPath(root) #All the blocks of the longest chain in the reverse order
+                                    b = l_path[1] #Second last block in the private chain
+                                    size = b.size() #Getting block size                                    
+                                    b1,b2 = peer.blocktree.DFS(b.previd)
+                                    if b2 == True:
+                                        peer.blocktree.addChildTree(b1,b) #Adding the block to the honest chain before forwarding 
+                                        num_blocks[peer.id-1] += 1                                         
+
+                                        #Now we write about this block in the peer file containing info about all blocks in the tree
+                                        filename = "Peer " + str(peer.id) + " blocks.txt" 
+                                        current = add_time(start_time , int(env.now))
+                                        depth = peer.blocktree.get_height(b.id)
+                                        if b.previd == 0:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", Genesis block\n"
+                                        else:
+                                            content = str(b.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", " + str(b.previd) + "\n"
+                                        with open(filename, "a") as f:
+                                            f.write(content)
+
+                                        
+                                                                    
+                                        for p in self.connected[peer.id]: #Forwarding the block, similar to txns
+                                            if b.forwarded[peer.id-1][p-1] == False:
+                                                b.forwarded[peer.id-1][p-1] = True
+                                                b.forwarded[p-1][peer.id-1] = True
+                                                timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
+                                                with open(file_block,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                                                with open(file_attacker,"a") as ff:
+                                                    ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")                                            
+                                                e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
+                                                self.event_queue.insert(e)                                
+
+
+                                                                                            
+
+
+
+                            elif lead > 2:
+                                #If the lead is greater than 2 and we see an honest valid block, then we release 1 block from our private chain
+                                #Same for selfish and stubborn mining attacks
+                                root = peer.priv_root
+                                peer.private_chain.findLongest(root,0)
+
+                                l_path = peer.private_chain.longestPath(root)
+                                b = l_path[lead-1] 
+                                b1,b2 = peer.blocktree.DFS(b.previd)
+                                if b2 == True:                            
+                                    size = b.size() #Getting block size                                
+                                    peer.blocktree.addChildTree(b1,b) #Adding the block to the honest chain before forwarding  
+                                    num_blocks[peer.id-1] += 1                                                              
+                                    for p in self.connected[peer.id]: #Forwarding the block, similar to txns
+                                        if b.forwarded[peer.id-1][p-1] == False:
+                                            b.forwarded[peer.id-1][p-1] = True
+                                            b.forwarded[p-1][peer.id-1] = True
+                                            timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c) #Calculating latency: Size will be what we computed above
+                                            with open(file_block,"a") as ff:
+                                                ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                                            with open(file_attacker,"a") as ff:
+                                                ff.write("Forwarding selfish block " + str(b.id) + " from attacker peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")                                        
+                                            e = event("recieve block",env.now + timeout,b,p) #Generating a recieve block event at the reciever after time latency
+                                            self.event_queue.insert(e)                            
+
+                            else:
+                                #If the lead was 0 and honest block was discovered
+                                peer.private_chain = GenralTree()
+                                peer.private_chain.setRoot(block)
+                                peer.priv_root = peer.private_chain.getRoot()     
+                                with open(file_block,"a") as ff:
+                                    ff.write("Changed private root to " + str(peer.priv_root.getData().id) + "\n")
+                                with open(file_attacker,"a") as ff:
+                                    ff.write("Changed private root to " + str(peer.priv_root.getData().id) + "\n")
+                                e = event("generate attacker block", env.now,block, peer.id)
+                                self.event_queue.insert(e)
+                                
+
+                            block1,boolean = peer.blocktree.DFS(block.previd) #Checking if the parent block exists in the blockchain tree     
+                            peer.blocktree.addChildTree(block1,block)   #Add the block to the blockchain tree of the peer  
+                            prev = block.id
+                            if prev in peer.pending: #If any children of the current block had arrived before then process them by creating a recieve event at the current time
+                                for b in peer.pending[prev]:
+                                    e = event("recieve block",env.now,b,peer.id)
+                                    self.event_queue.insert(e)  
+
+                            #Update longest_chain  
+
+                            trees[peer.id] = peer.blocktree #Updating the value of blocktree. We'll use this in part 8
+                            #We maintain a the longest chain of a peer with a dictionary longest_chain for part 8. Here we are updating it
+                            root = peer.blocktree.getRoot()
+                            lpath = peer.blocktree.longestPath(root)
+                            n = len(lpath) - 1
+                            final = [lpath[n-i] for i in range(len(lpath))]
+                            longest_chain[peer.id] = final                        
                                     
-                        e = event("generate block",env.now,block,peer.id)
-                        self.event_queue.insert(e)
-                        # for p in connected[peer.id]: #Forward the block to the remaining connections
-                        #     if block.forwarded[peer.id-1][p-1] == False:
-                        #         block.forwarded[peer.id-1][p-1] = True
-                        #         block.forwarded[p-1][peer.id-1] = True
-                        #         timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c)
-                        #         with open(file_block,"a") as ff:
-                        #             ff.write("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
-                        #         e = event("recieve block",env.now + timeout,block,p)
-                        #         self.event_queue.insert(e)
 
-                    else: #In case block was invalid
-                        peer.balances = prev_balances
-                        with open(file_block,"a") as ff:
-                            ff.write("Honest block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
-                
-                else: #In case block's parent hasn't arrived, we keep this block in the pending dictionary and process this block after the parent block arrives if its valid
-                    prev = block.previd
-                    if prev in peer.pending:
-                        peer.pending[prev].append(block)
-                    else:
-                        peer.pending[prev] = [block]  
-            peer.arrived.append(block)                                      
-            
+                            #Now we write about this block in the peer file containing info about all blocks in the tree
+                            filename = "Peer " + str(peer.id) + " blocks.txt" 
+                            current = add_time(start_time , int(env.now))
+                            depth = peer.blocktree.get_height(block.id)
+                            if block.previd == 0:
+                                content = str(block.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", Genesis block\n"
+                            else:
+                                content = str(block.id) + ", " + str(depth) + ", " + str(start_time.day) + "-" + str(start_time.month) + "-" + str(start_time.year) + " " + str(current) + ", " + str(block.previd) + "\n"
+                            with open(filename, "a") as f:
+                                f.write(content)
+
+                                        
+
+                            # for p in connected[peer.id]: #Forward the block to the remaining connections
+                            #     if block.forwarded[peer.id-1][p-1] == False:
+                            #         block.forwarded[peer.id-1][p-1] = True
+                            #         block.forwarded[p-1][peer.id-1] = True
+                            #         timeout = latency(peer.id-1,p-1,self.ro_ij,size,self.c)
+                            #         with open(file_block,"a") as ff:
+                            #             ff.write("Forwarding block " + str(block.id) + " from peer " + str(peer.id) + " to peer " + str(p) + " at t= " + str(env.now) + " latency = " + str(timeout) + "\n")
+                            #         e = event("recieve block",env.now + timeout,block,p)
+                            #         self.event_queue.insert(e)
+
+                        else: #In case block was invalid
+                            peer.balances = prev_balances
+                            with open(file_block,"a") as ff:
+                                ff.write("Honest block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
+                            with open(file_attacker,"a") as ff:
+                                ff.write("Honest block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
+                    
+                    else: #In case block's parent hasn't arrived, we keep this block in the pending dictionary and process this block after the parent block arrives if its valid
+                        prev = block.previd
+                        if prev in peer.pending:
+                            peer.pending[prev].append(block)
+                        else:
+                            peer.pending[prev] = [block]  
+                peer.arrived.append(block)                                      
+                            
                                             
         yield self.env.timeout(0)
 
 
 
-    def generate_selfish_block(self,env,peer):
-        timeout = generate_exponential(self.time_tk[peer.id-1]) #Timeout after which we'll work on creating the next block in private chain
+    def generate_attacker_block(self,env,peer):
+        timeout = generate_exponential(6000) #Timeout after which we'll work on creating the next block in private chain
         t = env.now
         #In the following lines we're just taking a subset of transactions from the pool such that the block size doesn't exceed 1MB
         # n = len(peer.transactions)
@@ -677,12 +787,14 @@ class p2p(object):
     
         with open(file_block,"a") as ff:
             ff.write("Generating selfish block " + str(blocknumbers[peer.id-1]+1) + " at peer " + str(peer.id) + " at t= " + str(env.now) + " timeout is " + str(timeout) + "\n")
-        e = event("process selfish block", t + timeout,b,peer.id) #Generating process selfish block event after the computed timeout
+        with open(file_attacker,"a") as ff:
+            ff.write("Generating selfish block " + str(blocknumbers[peer.id-1]+1) + " at peer " + str(peer.id) + " at t= " + str(env.now) + " timeout is " + str(timeout) + "\n")            
+        e = event("process attacker block", t + timeout,b,peer.id) #Generating process attacker block event after the computed timeout
         self.event_queue.insert(e)
         
         yield self.env.timeout(0)        
 
-    def process_selfish_block(self,env,peer,block):
+    def process_attacker_block(self,env,peer,block):
 
 
         #First we check if the private chain is still the same one as before
@@ -704,8 +816,11 @@ class p2p(object):
             if valid: #If block is valid
                 peer.balances = prev_balances
                 with open(file_block,"a") as ff:
-                    ff.write("Generated selfish block " + str(blocknumbers[peer.id - 1] + 1) + " at attcker peer " + str(peer.id) + " time = " + str(env.now) + " with txns " + str([x.id for x in block.txnlist]) + "\n")
+                    ff.write("Generated selfish block " + str(block.id) + " at attcker peer " + str(peer.id) + " time = " + str(env.now) + " with txns " + str([x.id for x in block.txnlist]) + "\n")
+                with open(file_attacker,"a") as ff:
+                    ff.write("Generated selfish block " + str(block.id) + " at attcker peer " + str(peer.id) + " time = " + str(env.now) + " with txns " + str([x.id for x in block.txnlist]) + "\n")                    
                 #self.blockid += 1
+                
                 blocknumbers[peer.id - 1] += 1
                 block.mod_txns() #Setting included field in the txns used as true
                 peer.update_transactions() #Removing used txns from the txn pool
@@ -717,7 +832,7 @@ class p2p(object):
                 #     peer.balances[r.id-1] += amt
                 #peer.balances[peer.id-1] += 50 #Adding mining fee
                 b,b1 = peer.private_chain.DFS(block.previd)
-                peer.private_chain.addChildTree(b,block)   #Adding block to the peer's blockchain tree
+                peer.private_chain.addChildTree(b,block)   #Adding block to the peer's private chain
 
                 #Update longest_chain
                 #trees[peer.id] = peer.blocktree #Updating the value of blocktree. We'll use this in part 8
@@ -728,7 +843,7 @@ class p2p(object):
                 # final = [lpath[n-i] for i in range(len(lpath))]
                 # longest_chain[peer.id] = final
 
-                e = event("generate selfish block",env.now,block,peer.id) #We continue to mine on this generated selfish block
+                e = event("generate attacker block",env.now,block,peer.id) #We continue to mine on this generated selfish block
                 self.event_queue.insert(e)                
 
 
@@ -761,11 +876,22 @@ class p2p(object):
             else:
                 peer.balances = prev_balances
                 #If block is invalid, we need to mine on the last valid block
-                e = event("generate selfish block", env.now,peer.id)
+                e = event("generate attacker block", env.now,peer.id)
                 self.event_queue.insert(e)
                 with open(file_block,"a") as ff:
                     ff.write("Selfish block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n")
+                with open(file_attacker,"a") as ff:
+                    ff.write("Selfish block " + str(block.id) + " is invalid at peer " + str(peer.id) + "\n") 
 
+        else:
+                
+                with open(file_block,"a") as ff:
+                    ff.write("Mining for block " + str(block.id) + " stopped at attacker peer " + str(peer.id) + " at t =  " + str(env.now) + "\n")    
+                with open(file_attacker,"a") as ff:
+                    ff.write("Mining for block " + str(block.id) + " stopped at attacker peer " + str(peer.id) + " at t =  " + str(env.now) + "\n")                                
+
+                # e = event("generate attacker block",env.now,peer.private_chain.lastElem(),peer.id)
+                # self.event_queue.insert(e)
 
         
         yield self.env.timeout(0)      
@@ -798,11 +924,11 @@ class p2p(object):
             elif e.type == "recieve block":
                 env.process(self.recieve_block(env,self.peers[e.peerid-1],e.txnorblock))
             
-            elif e.type == "generate selfish block":
-                env.process(self.generate_selfish_block(env,self.peers[e.peerid - 1]))
+            elif e.type == "generate attacker block":
+                env.process(self.generate_attacker_block(env,self.peers[e.peerid - 1]))
 
-            elif e.type == "process selfish block":
-                env.process(self.process_selfish_block(env,self.peers[e.peerid - 1],e.txnorblock))                
+            elif e.type == "process attacker block":
+                env.process(self.process_attacker_block(env,self.peers[e.peerid - 1],e.txnorblock))                
             
 
 
@@ -813,6 +939,7 @@ class p2p(object):
 
 def peer_function(env): #Main function that will run in the simulation
     tk = [15000 for i in range(num_peers)]
+    tk[num_peers-1] = 7000
     peer2peer = p2p(env,100,tk,0,1,peers,attackers,connected,ro_ij,c) #Creating peer 2 peer network object
     for peer in peer2peer.peers: #Generating dummy transactions that will start transaction generation in all the peers
         yield env.process(peer2peer.generate_transaction(env,peer,True))
@@ -822,7 +949,7 @@ def peer_function(env): #Main function that will run in the simulation
             b = block(-1,[],0,0,0,True)
             yield env.process(peer2peer.recieve_block(env,peer,b))
         else:
-            yield env.process(peer2peer.generate_selfish_block(env,peer))
+            yield env.process(peer2peer.generate_attacker_block(env,peer))
 
     
     yield env.process(peer2peer.simulate(env)) #Calling simulate function that will run subsequent events
@@ -833,24 +960,26 @@ def peer_function(env): #Main function that will run in the simulation
 
 if __name__ == '__main__':
     txn_id = 0 
+    zeta = 0.75
+    num_blocks = [0 for i in range(num_peers)] #Number of blocks in each peer's blocktree for honest node
+    #For adversary it contains number of blocks contributed by him in honest chain
     args = get_args()
     attack = args.attack
     ro_ij = generate_uniform(10,500) #ro_ij in the latency defn in ms
     b = [init_balances for i in range(num_peers)] #Balances of the peers
-    attackers = [num_peers - 1] #List of attackers
+    attackers = [num_peers] #List of attackers
     n_slow = int((num_peers - 1) / 2)
     i_a = [False for i in range(num_peers)] #Setting is_attcker field for the peers
     for a in attackers:
-        i_a[a] = True
+        i_a[a-1] = True
     peers = [peer(i+1,b,i_a[i]) for i in range(num_peers)]  #Generating the peer list
 
 
 
     slow = random.sample(peers[:-1], n_slow)
-    
 
-    slow = random.sample(peers,int(num_peers*z)) #List with slow peers
-    fast = [i for i in peers if i not in slow] #List with fast peers
+
+    fast = [i for i in peers[:-1] if i not in slow] #List with fast peers
     
     
     
@@ -870,7 +999,12 @@ if __name__ == '__main__':
     
     s = [x.id for x in slow] #Slow peer ids
     f = [x.id for x in fast] #Fast peer ids
-    connected = MakeConnections([i+1 for i in range(num_peers)],s,f,int(num_peers / 2)) #Connections matrix (Refer to connections.py for the logic)
+
+
+    connected = MakeConnections([i+1 for i in range(num_peers-1)],s,f,int(num_peers / 2),zeta) #Connections matrix (Refer to connections.py for the logic)
+    fast.append(peers[num_peers-1])
+    f.append(num_peers)
+
 
     start_time = datetime.now() #Start time of the simulation
 
@@ -883,22 +1017,37 @@ if __name__ == '__main__':
     env.process(peer_function(env)) #Running peer function in the environment
     env.run(until=90000)  #Run until timeout
 
-    # for i in range(num_peers):
-    #     longest_ids = [x.id for x in longest_chain[i+1]][1:] #List of longest ids in the longest chain
-    #     length = len(longest_ids)
-    #     with open("Peer" + str(i+1) + "_Analysis.txt", "a") as f1:
-    #         f1.write("The longest chain is of length " + str(length) + " consists of blocks with id(s) " + str(longest_ids) + "\n")
-    #     contri = [0 for j in range(num_peers)]
-    #     for item in longest_chain[i+1][1:]:
-    #         contri[item.creatorid-1] += 1
-    #     # fraction = []
-    #     # for j in range(num_peers):
-    #     #     fraction.append(float(contri[j] / blocknumbers[j]))
-    #     with open("Peer" + str(i+1) + "_Analysis.txt", "a") as f1: #Updating analysis doc
-    #         for j in range(num_peers):
-    #             f1.write("Peer " + str(j+1) + " contributed " + str(contri[j]) + " out of total " + str(blocknumbers[j]) + "\n")
-    #         f1.write("Slow nodes: " + str(s) + "\n")
-    #         f1.write("Fast nodes: " + str(f) + "\n")
+    total_blocks = 0
+    for i in range(num_peers):
+        total_blocks += len([x.id for x in longest_chain[i+1]][1:])
+
+
+    for i in range(num_peers):
+        longest_ids = [x.id for x in longest_chain[i+1]][1:] #List of longest ids in the longest chain
+        length = len(longest_ids)
+        with open("Peer" + str(i+1) + "_Analysis.txt", "a") as f1:
+            f1.write("The longest chain is of length " + str(length) + " consists of blocks with id(s) " + str(longest_ids) + "\n")
+        contri = [0 for j in range(num_peers)]
+        for item in longest_chain[i+1][1:]:
+            contri[item.creatorid-1] += 1
+        # fraction = []
+        # for j in range(num_peers):
+        #     fraction.append(float(contri[j] / blocknumbers[j]))
+        with open("Peer" + str(i+1) + "_Analysis.txt", "a") as f1: #Updating analysis doc
+            for j in range(num_peers):
+                f1.write("Peer " + str(j+1) + " contributed " + str(contri[j]) + " out of total " + str(blocknumbers[j]) + "\n")
+            f1.write("Slow nodes: " + str(s) + "\n")
+            f1.write("Fast nodes: " + str(f) + "\n")
+            f1.write("Adversary nodes: " + str(attackers) + "\n")
+        if i != num_peers-1:
+            print("Peer " + str(i+1))
+            print("MPU_node_overall = " + str(num_blocks[i] / total_blocks))
+    
+        else:
+            adv_blocks = [x.id for x in longest_chain[i+1] if x.creatorid in attackers]
+            #print(adv_blocks)
+            print("Adversary peer " + str(i+1))
+            print("MPU_node_adversary = " + str(num_blocks[i] / blocknumbers[i]))
 
         
 
